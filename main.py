@@ -27,7 +27,7 @@ SKILL_CATEGORY_ORDER = [
     "Databases",
     "Cloud & DevOps",
     "Testing",
-    "Tools & Methodologies",
+    "Tools & Practices",
     # "Soft Skills"  # if you use it
 ]
 
@@ -90,7 +90,13 @@ SOFT_SKILL_SIGNAL_WORDS = {
     "attention to detail",
     "highly competitive","ability to adapt",
     "motivating", "ability to learn quickly",
-    "consistent"
+    "consistent",
+    "independently",
+    "collaborate",
+    "pressure",
+    "analytical",
+    "creative",
+    "organized",
 }
 
 
@@ -113,41 +119,69 @@ OUTPUT_DIR = "output"
 PERSON_PROFILES = {
     "Timothy": {
         "style": "strategic, architecture-focused, leadership-driven",
-        "summary": "senior software engineer focused on scalable systems"
+        "summary": "senior software engineer focused on scalable systems",
+        "experience": {
+            "company_1": "focus on scalable systems, architecture design, worked in SaaS industry",
+            "company_2": "focus on strategic leadership, worked in fintech industry",
+            "company_3": "focus on cross-team collaboration, worked in blockchain industry",
+            "company_4": "focus on junior-level responsibilities, worked in healthcare software industry"
+        }
     },
     "Wilfredo": {
         "style": "hands-on, delivery-focused, optimization-oriented",
-        "summary": "experienced senior full-stack engineer with strong execution"
+        "summary": "experienced senior full-stack engineer with strong execution",
+        "experience": {
+            "company_1": "focus on performance optimization, worked in e-commerce industry", 
+            "company_2": "focus on hands-on implementation, worked in microservices industry",
+            "company_3": "focus on mid-level experience, worked in cloud services industry",
+            "company_4": "focus on creative problem solving, worked in mobile app development industry"
+        }
     },
     "Lou": {
         "style": "collaborative, balanced, system improvement oriented",
-        "summary": "senior software engineer with growing ownership and impact"
+        "summary": "senior software engineer with growing ownership and impact",
+        "experience": {
+            "company_1": "focus on system improvements, worked in telecom industry",
+            "company_2": "focus on team collaboration and ownership, worked in banking industry",
+            "company_3": "focus on enhancing system reliability, worked in analytics industry",
+            "company_4": "focus on error reduction and code quality, worked in education software industry"
+        }
     },
     "Ryan": {
         "style": "practical, implementation-heavy, learning-focused",
-        "summary": "senior software engineer with solid fundamentals and growth mindset"
+        "summary": "senior software engineer with solid fundamentals and growth mindset",
+        "experience": {
+            "company_1": "focus on fundamental implementations, practical solutions, worked in AI industry",
+            "company_2": "focus on heavy implementation tasks, worked in logistics software industry",
+            "company_3": "focus on team learning and growth, worked in gaming industry",
+            "company_4": "focus on foundational coding skills, fast learning, worked in cybersecurity industry"
+        }
     },
     "James": {
         "style": "results-driven, execution-focused, performance optimization oriented",
-        "summary": "senior full-stack engineer with a strong track record of delivering high-impact features and performance improvements"
+        "summary": "senior full-stack engineer with a strong track record of delivering high-impact features and performance improvements",
+        "experience": {
+            "company_1": "focus on performance improvements and high-impact features, worked in utilities industry",
+            "company_2": "focus on leading execution of key projects, results-driven, worked in search engine industry",
+            "company_3": "focus on team contributions to performance optimization, worked in advertising industry",
+            "company_4": "focus on learning and applying best practices for efficient coding, performance, and reliability, worked in insurance software industry"
+        }
     }
-    
 }
-
-
 # ================= DEFAULT SKILLS ================= #
 
 DEFAULT_SKILLS = {
-    "Technical Skills": [
+    "Programming Languages": [
         "JavaScript", "TypeScript", "Python", "PHP",
-        "Ruby", "Golang", "Microservices", "REST APIs"
+        "Ruby", "Golang", "Java", "C#"
     ],
     "Frameworks & Libraries": [
+        "Microservices","REST APIs",
         "React.js", "Next.js", "Node.js",
         "Django", "Flask", "Laravel"
     ],
     "Databases": [
-        "MySQL", "PostgreSQL", "MongoDB"
+        "MySQL", "PostgreSQL", "MongoDB", "FireBase", "Redis"
     ],
     "Testing": [
         "Jest", "React Testing Library",
@@ -201,15 +235,23 @@ You are an ATS optimization engine.
 Output valid JSON only.
 
 GOAL:
-Generate FOUR DISTINCT senior-level resumes for the SAME Job Description.
+Generate FIVE DISTINCT senior-level resumes for the SAME Job Description.
 Target ATS score: 90–95%+.
+All resumes Must be passed in jobscan.com's resume scanner with over 95%+ ATS score(very very important!!).
+Must gurantee that each resume passes with over 95%+ ATS score in jobscan!!!(!!Critical!!).
+They are must be professional / ATS-friendly resume, it should be cleaner, parallel, and specific to the JD.
+All sentences you provide me MUST be different and unique in structure and wording.
+Before returning, verify that all sentences are unique across all people!!!(totally different wording and structure for each bullet point!!).
+if any sentence is similar( if similarity rate is over than 65% ) across people, regenerate it again until all sentences are unique across all people!!!
 
 ABSOLUTE RULES:
 - Use EXACT keywords and phrases from the Job Description.
-- Repeat critical JD keywords across Summary, Skills, and Experience.
+- Repeat critical JD keywords across Summary, Skills and Experience.
 - Each person MUST have unique wording, metrics, and sentence structure.
 - Do NOT reuse bullets across people.
 - Output JSON ONLY. No markdown. No explanations.
+- All soft skills and hard skills that mentioned in JD MUST be exist all of the resumes.
+- Something like 'front-end development', 'cloud infrastructure', 'Information Systems', 'web services', 'Software Development Lifecycle' and so on... are also hard skills.
 
 PEOPLE & STYLE DIFFERENTIATION:
 {people_block}
@@ -227,7 +269,7 @@ OUTPUT FORMAT (STRICT JSON — NO TRAILING COMMAS):
       "Databases": [],
       "Cloud & DevOps": [],
       "Testing": [],
-      "Tools & Methodologies": []
+      "Tools & Practices": []
     }},
     "experience": {{
       "company_1": [],
@@ -244,7 +286,7 @@ OUTPUT FORMAT (STRICT JSON — NO TRAILING COMMAS):
       "Databases": [],
       "Cloud & DevOps": [],
       "Testing": [],
-      "Tools & Methodologies": []
+      "Tools & Practices": []
     }},
     "experience": {{
       "company_1": [],
@@ -261,7 +303,7 @@ OUTPUT FORMAT (STRICT JSON — NO TRAILING COMMAS):
       "Databases": [],
       "Cloud & DevOps": [],
       "Testing": [],
-      "Tools & Methodologies": []
+      "Tools & Practices": []
     }},
     "experience": {{
       "company_1": [],
@@ -278,7 +320,7 @@ OUTPUT FORMAT (STRICT JSON — NO TRAILING COMMAS):
       "Databases": [],
       "Cloud & DevOps": [],
       "Testing": [],
-      "Tools & Methodologies": []
+      "Tools & Practices": []
     }},
     "experience": {{
       "company_1": [],
@@ -295,7 +337,7 @@ OUTPUT FORMAT (STRICT JSON — NO TRAILING COMMAS):
       "Databases": [],
       "Cloud & DevOps": [],
       "Testing": [],
-      "Tools & Methodologies": []
+      "Tools & Practices": []
     }},
     "experience": {{
       "company_1": [],
@@ -308,30 +350,32 @@ OUTPUT FORMAT (STRICT JSON — NO TRAILING COMMAS):
 
 SUMMARY RULES:
 - Senior-level tone ONLY for ALL people.
-- Start summary with the EXACT job title from the Job Description.
+- Start summary with "Senior Software Engineer" and contain the EXACT job title from the Job Description.
 - 4–5 concise lines.
 - Include 6–8 exact JD keywords.
 
 SKILLS RULES:
 - Categorize skills strictly under the provided categories.
 - Use JD keywords verbatim where possible.
-- Include Soft Skills explicitly.
+- Include 6–10 skills per category.
+- Prioritize skills mentioned multiple times in the JD.
+- In 'testing', prefer automated testing tools from the JD.
+- In 'tools & practices', must only include tools and practices in the JD.
 
 EXPERIENCE RULES:
-- company_1 and company_2 → Senior-level responsibilities
-- company_3 → Mid-level responsibilities
-- company_4 → Junior-level responsibilities
-- 4–6 bullets per company.
+- company_1 and company_2 → Senior-level responsibilities, 6-8 bullets each
+- company_3 → Mid-level responsibilities, 6 bullets
+- company_4 → Junior-level responsibilities, 4-6 bullets
 - EACH bullet MUST:
   - Start with a strong action verb
   - Include at least ONE JD hard skill (verbatim)
   - Include at least ONE soft skill (verbatim)
   - Include a measurable metric (%,$,users,latency,scale)
-
+- prioritize responsibilities and achievements that align with the JD.
+- prioritize soft skills extracted from the JD.
+  
 JOB DESCRIPTION:
-\"\"\"
 {jd_text}
-\"\"\"
 
 Before returning, verify that the JSON is syntactically valid.
 Return ONLY valid JSON.
@@ -370,7 +414,7 @@ def extract_soft_skills(jd_text: str) -> list[str]:
             continue
 
         soft_skills.add(phrase)
-
+    print('extracted soft skills:', soft_skills)
     return sorted(soft_skills)
 
 def extract_text(response):
@@ -464,6 +508,27 @@ def replace_placeholder(doc, placeholder, value):
         if placeholder in p.text:
             p.text = p.text.replace(placeholder, value)
 
+def replace_skills_placeholder(doc, placeholder, skills: dict):
+    for p in doc.paragraphs:
+        if placeholder in p.text:
+            # Clear paragraph
+            p.clear()
+
+            for category in SKILL_CATEGORY_ORDER:
+                items = skills.get(category, [])
+                if not items:
+                    continue
+
+                # Bold category
+                cat_run = p.add_run(f"{category}: ")
+                cat_run.bold = True
+
+                # Normal skills
+                p.add_run(", ".join(items))
+
+                # New line after each category
+                p.add_run("\n")
+
 def fill_template(template_path, data, output_path):
     print('-------------------------------------------')
     doc = Document(template_path)
@@ -472,7 +537,7 @@ def fill_template(template_path, data, output_path):
     replace_placeholder(doc, "{{SUMMARY}}", data["summary"])
 
     merged_skills = merge_skills(data["skills"])
-    replace_placeholder(doc, "{{SKILLS}}", format_skills(merged_skills))
+    replace_skills_placeholder(doc, "{{SKILLS}}", merged_skills)
     for i in range(1, COMPANY_COUNT + 1):
         bullets = f"\n{BULLET}".join(data["experience"][f"company_{i}"])
         bullets = bullets.removesuffix(BULLET)
