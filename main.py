@@ -500,7 +500,7 @@ def on_hotkey():
         # Create output folder once
         if output_base_dir is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_base_dir = os.path.join(OUTPUT_DIR, f"JD_{timestamp}")
+            output_base_dir = os.path.join(OUTPUT_DIR, f"JD_resumes")
             os.makedirs(output_base_dir, exist_ok=True)
         print('output_base_dir:', output_base_dir)
         soft_skills = extract_soft_skills(jd)
@@ -580,5 +580,5 @@ def convertToPDF():
 
 notify("Resume Generator is running")
 keyboard.add_hotkey("ctrl+q", on_hotkey)
-keyboard.add_hotkey("ctrl+y", convertToPDF)
+keyboard.add_hotkey("ctrl+alt+p", convertToPDF)
 keyboard.wait()
