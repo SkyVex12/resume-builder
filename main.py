@@ -86,9 +86,11 @@ SOFT_SKILL_SIGNAL_WORDS = {
     
     "empathy",
     "empathetic",
-    "empathic", "attention to detail",
+    "empathic", 
+    "attention to detail",
     "highly competitive","ability to adapt",
     "motivating", "ability to learn quickly",
+    "consistent"
 }
 
 
@@ -443,6 +445,16 @@ def format_skills(skills: dict) -> str:
             lines.append(f"{category}: {', '.join(items)}")
     return "\n".join(lines)
 
+# ================= DOCX To PDF ================= #
+from docx2pdf import convert
+from pathlib import Path
+
+def batch_convert(folder):
+    print('Starting batch conversion to PDF in folder:', 'output/' + folder)
+    for doc in Path(f"output/{folder}").glob("*.docx"):
+        print('Converting to PDF:', doc.stem)
+        convert(doc, f"output/{folder}/{doc.stem}.pdf")
+
 # ================= DOCX ================= #
 
 def replace_placeholder(doc, placeholder, value):
@@ -468,7 +480,6 @@ def fill_template(template_path, data, output_path):
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     doc.save(output_path)
-
 
 
 # ================= MAIN ================= #
@@ -509,7 +520,7 @@ def on_hotkey():
 
             output_docx = os.path.join(
                 output_base_dir,
-                f"{index}_{person}_resume.docx"
+                f"{person}_resume.docx"
             )
             
             fill_template(template, data, output_docx)
@@ -524,7 +535,13 @@ def on_hotkey():
                     pass
                 folder_opened = True
 
-        notify("All resumes generated")
+        notify("All resume docs generated")
+
+        notify("Started PDF generation")
+
+        batch_convert(output_base_dir)
+        
+        notify("All resume PDFs generated")
 
     except Exception as e:
         print('Error:', e)
@@ -533,8 +550,36 @@ def on_hotkey():
     finally:
         is_running = False
 
+def convertToPDF():
+    global output_base_dir, folder_opened, is_running
+
+    if is_running:
+        return
+
+    is_running = True
+
+    try:
+        output_base_dir = "JD_20251218_075621"
+        if output_base_dir is None:
+            notify("No resumes to convert. Generate resumes first.")
+            return
+
+        notify("Started PDF generation")
+
+        batch_convert(output_base_dir)
+
+        notify("All resume PDFs generated")
+
+    except Exception as e:
+        print('Error:', e)
+        notify("Error generating PDFs")
+
+    finally:
+        is_running = False
+
 # ================= HOTKEY ================= #
 
 notify("Resume Generator is running")
 keyboard.add_hotkey("ctrl+q", on_hotkey)
+keyboard.add_hotkey("ctrl+y", convertToPDF)
 keyboard.wait()
