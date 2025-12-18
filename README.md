@@ -92,7 +92,7 @@ Each bullet:
 ### Install Dependencies
 
 ```bash
-pip install openai python-docx keyboard pyperclip winotify
+pip install openai python-docx keyboard pyperclip winotify docx2pdf scikit-learn
 ```
 
 ---
