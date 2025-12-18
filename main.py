@@ -86,7 +86,9 @@ SOFT_SKILL_SIGNAL_WORDS = {
     
     "empathy",
     "empathetic",
-    "empathic"
+    "empathic", "attention to detail",
+    "highly competitive","ability to adapt",
+    "motivating", "ability to learn quickly",
 }
 
 
@@ -99,7 +101,7 @@ HARD_SKILL_KEYWORDS = {
     "aws", "azure", "docker", "kubernetes",
     "jenkins", "ci/cd",
     "jest", "cypress", "mocha",
-    "jira", "git", "rest", "api", "microservices"
+    "jira", "git", "rest", "api", "microservices", "security","AI"
 }
 
 OUTPUT_DIR = "output"
