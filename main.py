@@ -450,10 +450,12 @@ from docx2pdf import convert
 from pathlib import Path
 
 def batch_convert(folder):
-    print('Starting batch conversion to PDF in folder:', 'output/' + folder)
-    for doc in Path(f"output/{folder}").glob("*.docx"):
-        print('Converting to PDF:', doc.stem)
-        convert(doc, f"output/{folder}/{doc.stem}.pdf")
+    global  is_running
+
+    print('Starting batch conversion to PDF in folder:', folder)
+    for doc in Path(f"{folder}").glob("*.docx"):
+        print('Converting to PDF:', doc)
+        convert(doc, f"{folder}/{doc.stem}.pdf")
 
 # ================= DOCX ================= #
 
@@ -552,6 +554,7 @@ def on_hotkey():
 
 def convertToPDF():
     global output_base_dir, folder_opened, is_running
+    output_base_dir = os.path.join(OUTPUT_DIR, f"JD_resumes")
 
     if is_running:
         return
