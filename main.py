@@ -559,7 +559,6 @@ def convertToPDF():
     is_running = True
 
     try:
-        output_base_dir = "JD_20251218_075621"
         if output_base_dir is None:
             notify("No resumes to convert. Generate resumes first.")
             return
