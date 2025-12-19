@@ -4,7 +4,7 @@ import json
 import time
 import contextlib
 import io
-from datetime import datetime
+import random
 from pathlib import Path
 
 import keyboard
@@ -14,10 +14,7 @@ from winotify import Notification
 from docx import Document
 from docx2pdf import convert
 
-from openai import OpenAI
-
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+from openai import OpenAI, OpenAIError
 
 
 # ================= CONFIG ================= #
@@ -47,53 +44,8 @@ SKILL_CATEGORY_ORDER = [
     "Tools",
 ]
 
-SOFT_SKILL_SIGNAL_WORDS = {
-    "team", "teams", "cross-functional", "cross functional",
-    "collaboration", "collaborative", "coordination", "partnering", "partnership",
-    "communication", "communicating", "stakeholder", "stakeholders", "presentation", "presenting",
-    "alignment", "aligned",
-    "leadership", "leading", "lead", "ownership", "accountability", "responsibility", "responsible",
-    "decision", "decision-making",
-    "process", "processes", "process changes", "process improvement", "continuous improvement",
-    "execution", "delivery", "planning", "prioritization", "roadmap", "strategy",
-    "mentoring", "mentor", "mentorship", "coaching", "guidance", "training",
-    "problem", "problem-solving", "analysis", "analytical", "investigation", "troubleshooting",
-    "quality", "reliability", "best practices", "standards", "compliance",
-    "customer", "customers", "client", "clients", "business", "business needs", "requirements",
-    "adaptability", "flexibility", "change", "changes", "improvement", "optimization",
-    "empathy", "empathetic", "empathic",
-    "attention to detail",
-    "independently", "collaborate", "pressure", "creative", "organized", "consistent",
-    "detail-oriented", "interpersonal", "multitasking", "proactive", "self-motivated", "strategic",
-    "perfectionist", "diligent", "dependable", "dedicated", "innovative", "detail-oriented","satisfaction",
-    "communicate", "teamwork", 
-}
-
-HARD_SKILL_KEYWORDS = {
-    "java", "python", "golang", "php", "javascript", "typescript",
-    "react", "next.js", "node.js", "django", "flask", "laravel",
-    "mysql", "postgresql", "mongodb", "firebase", "redis",
-    "aws", "azure", "docker", "kubernetes", "jenkins", "ci/cd",
-    "jest", "cypress", "mocha",
-    "jira", "git", "rest", "api", "microservices", "security", "ai"  # ensure lowercase
-}
-
-EXTRA_HARD_SKILLS = [
-    "Cloud Infrastructure", "Information Systems", "Web Services",
-    "object-oriented programming languages", "software development life cycle", 
-    "front-end development", "back-end development", "full stack development", 
-    "full-stack development", "project documentation",
-]
-
 OUTPUT_DIR = "output"
-BULLET = "  \u2022    "  # bullet point
-
-
-# Uniqueness thresholds / loops
-SIMILARITY_THRESHOLD = 0.65
-MAX_REGEN_ROUNDS = 4
-AVOID_TEXT_MAX_CHARS = 3500  # keep avoid block small to control tokens
-
+BULLET = "  \u2022    "  # bullet point prefix
 
 # ================= PERSON PROFILES ================= #
 
@@ -154,254 +106,267 @@ def get_client() -> OpenAI:
     return OpenAI(api_key=api_key)
 
 
+
 client = get_client()
+
+def call_openai_json(
+    prompt: str,
+    model: str = "gpt-4.1-mini",
+    temperature: float = 0.3,
+    max_retries: int = 4,
+    retry_sleep: float = 2.0,
+) -> dict:
+    """
+    Calls OpenAI and guarantees a parsed JSON object or raises.
+    Designed for ATS / resume generation (strict JSON).
+    """
+
+    last_error = None
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = client.responses.create(
+                model=model,
+                input=prompt,
+                temperature=temperature,
+                timeout=90,
+            )
+
+            raw = extract_text(response)
+            if not raw:
+                raise ValueError("Empty response")
+
+            # --- Fast path: valid JSON ---
+            try:
+                return json.loads(raw)
+            except json.JSONDecodeError:
+                pass
+
+            # --- Recovery path: extract first JSON object ---
+            match = re.search(r"\{[\s\S]*\}", raw)
+            if match:
+                candidate = match.group(0)
+                try:
+                    return json.loads(candidate)
+                except json.JSONDecodeError:
+                    pass
+
+            raise ValueError("Model returned invalid JSON")
+
+        except OpenAIError as e:
+            last_error = e
+            # Rate-limit or transient error → retry
+            if "rate limit" in str(e).lower() or "timeout" in str(e).lower():
+                time.sleep(retry_sleep * attempt)
+                continue
+            raise
+
+        except Exception as e:
+            last_error = e
+            time.sleep(retry_sleep * attempt)
+
+    raise RuntimeError(f"OpenAI JSON call failed after {max_retries} attempts: {last_error}")
 
 output_base_dir = None
 folder_opened = False
 is_running = False
 
 
-# ================= SOFT SKILL EXTRACTION ================= #
-
-def extract_soft_skills(jd_text: str) -> list[str]:
-    jd = jd_text.lower()
-    candidates = re.findall(r"\b[a-z]+(?:[-\s][a-z]+){1,3}\b", jd)
-    soft = set()
-
-    for phrase in candidates:
-        phrase = phrase.strip()
-        if not any(sig in phrase for sig in SOFT_SKILL_SIGNAL_WORDS):
-            continue
-        if any(h in phrase for h in HARD_SKILL_KEYWORDS):
-            continue
-        soft.add(phrase)
-    print(soft)
-    return sorted(soft)
-
-
 # ================= PROMPTS ================= #
 
-def people_block() -> str:
-    return "\n".join(f"- {name}: {PERSON_PROFILES[name]['style']}" for name in PERSON_ORDER)
-
-
-def build_prompt_all(jd_text: str, soft_skills_text: str) -> str:
+def build_prompt_compress_jd(jd_text: str) -> str:
     return f"""
-You are an ATS optimization engine.
-Output valid JSON only.
+Return ONLY valid JSON.
 
-GOAL:
-Generate FOUR DISTINCT senior-level resumes for the SAME Job Description.
-Target ATS score: 90–95%+.
+TASK:
+Compress this Job Description into an ATS_PACKAGE JSON object with:
+- job_title_exact (the exact job title phrase in the JD if present; else "Senior Software Engineer")
+- core_hard: list of hard skills/tech/phrases that must be present (20–35 max), something like 
+- core_soft: list of soft skills phrases verbatim from JD (10–20 max)
+- required_phrases: important long phrases (5–15 max)
+- constraints: {{"must_appear_each_resume": true, "max_repeat_per_term": 3}}
+- lane_spines: 5 distinct focus spines for Timothy/Wilfredo/Lou/Ryan (1 line each)
 
-ABSOLUTE RULES:
-- Use EXACT keywords and phrases from the Job Description where possible.
-- Repeat critical JD keywords across Summary, Skills, and Experience (ATS).
-- Each person MUST have unique wording, metrics, and sentence structure.
-- Do NOT reuse bullets across people.
-- Output JSON ONLY. No markdown. No explanations.
-- All soft skills and hard skills mentioned in the JD MUST appear across ALL resumes.
-- Treat items like {EXTRA_HARD_SKILLS} as hard skills too when present.
-- Use these hard skills as optional (more than 3 but don't use same skills across people): {DEFAULT_SKILLS}
-
-PEOPLE & STYLE DIFFERENTIATION:
-{people_block()}
-
-SOFT SKILLS (USE VERBATIM WORDING FROM JD):
-{soft_skills_text}
-
-OUTPUT FORMAT (STRICT JSON — NO TRAILING COMMAS):
-{{
-  "Timothy": {{
-    "summary": "string",
-    "skills": {{
-      "Programming Languages": [],
-      "Frameworks & Libraries": [],
-      "Databases": [],
-      "Cloud & DevOps": [],
-      "Testing": [],
-      "Tools": []
-    }},
-    "experience": {{
-      "company_1": [],
-      "company_2": [],
-      "company_3": [],
-      "company_4": []
-    }}
-  }},
-  "Wilfredo": {{
-    "summary": "string",
-    "skills": {{
-      "Programming Languages": [],
-      "Frameworks & Libraries": [],
-      "Databases": [],
-      "Cloud & DevOps": [],
-      "Testing": [],
-      "Tools": []
-    }},
-    "experience": {{
-      "company_1": [],
-      "company_2": [],
-      "company_3": [],
-      "company_4": []
-    }}
-  }},
-  "Lou": {{
-    "summary": "string",
-    "skills": {{
-      "Programming Languages": [],
-      "Frameworks & Libraries": [],
-      "Databases": [],
-      "Cloud & DevOps": [],
-      "Testing": [],
-      "Tools": []
-    }},
-    "experience": {{
-      "company_1": [],
-      "company_2": [],
-      "company_3": [],
-      "company_4": []
-    }}
-  }},
-  "Ryan": {{
-    "summary": "string",
-    "skills": {{
-      "Programming Languages": [],
-      "Frameworks & Libraries": [],
-      "Databases": [],
-      "Cloud & DevOps": [],
-      "Testing": [],
-      "Tools": []
-    }},
-    "experience": {{
-      "company_1": [],
-      "company_2": [],
-      "company_3": [],
-      "company_4": []
-    }}
-  }},
-}}
-
-SUMMARY RULES:
-- Senior-level tone ONLY for ALL people.
-- Start summary with "Senior Software Engineer" and include the EXACT job title from the Job Description.
-- 4–5 concise lines.
-- Include 6–8 exact JD keywords.
-
-SKILLS RULES:
-- Categorize skills strictly under the provided categories.
-- Use JD keywords verbatim where possible.
-- Include 6–10 skills per category.
-- Prioritize skills mentioned multiple times in the JD.
-- 'Tools' must only include tools in the JD.
-
-EXPERIENCE RULES:
-- company_1 and company_2 → Senior-level responsibilities, 6–8 bullets each
-- company_3 → Mid-level responsibilities, 6 bullets
-- company_4 → Junior-level responsibilities, 4–6 bullets
-- EACH bullet MUST:
-  - Start with a strong action verb
-  - Include at least ONE JD hard skill (verbatim)
-  - Include at least ONE soft skill (verbatim)
-  - Include a measurable metric (%,$,users,latency,scale)
-- Enforce uniqueness across people: different verbs, different metric types, different framing.
+RULES:
+- Use phrases verbatim from JD when possible.
+- Do NOT invent technologies not in JD.
+- Output JSON only.
 
 JOB DESCRIPTION:
 {jd_text}
-
-Return ONLY valid JSON.
 """.strip()
+
+def build_avoid_profile(resume: dict) -> dict:
+    bullets = []
+    for c in ["company_1","company_2","company_3","company_4"]:
+        bullets += resume.get("experience", {}).get(c, []) or []
+
+    def first5(s):
+        w = re.findall(r"[A-Za-z0-9]+", s)
+        return " ".join(w[:5]).lower()
+
+    starts = sorted({first5(b) for b in bullets if isinstance(b,str)})
+
+    verbs = []
+    for b in bullets:
+        m = re.match(r"^\s*([A-Za-z]+)", b.strip())
+        if m:
+            verbs.append(m.group(1).lower())
+
+    return {
+        "banned_starts_first5": starts[:80],
+        "verbs_used": sorted(set(verbs))[:60],
+    }
 
 import json
 
-def build_prompt_one_person(jd_text: str, soft_skills_text: str, person: str, avoid_text: str) -> str:
+def build_prompt_one_person_from_pkg(
+    ats_package: dict,
+    person: str,
+    avoid_profile: dict,
+    secondary_json: str,
+) -> str:
     profile = PERSON_PROFILES[person]
-    metric_hint = profile.get("metrics", "")
-
-    # Serialize injected objects so the model sees valid JSON literals
-    extra_hard_json = json.dumps(EXTRA_HARD_SKILLS, ensure_ascii=False)
-    default_skills_json = json.dumps(DEFAULT_SKILLS, ensure_ascii=False)
-
-    # Keep avoid_text short to reduce chaos (huge blocks increase formatting errors)
-    avoid_text = avoid_text[:2500]
+    
+    pkg = json.dumps(ats_package, ensure_ascii=False)
+    avoid = json.dumps(avoid_profile, ensure_ascii=False)
 
     return f"""
-You are an ATS optimization engine.
+Output ONLY valid JSON (no markdown, no extra text).
 
-OUTPUT CONTRACT (CRITICAL):
-- Output MUST be a single valid JSON object and NOTHING else.
-- No markdown. No comments. No extra keys. No trailing commas.
-- All strings must use double quotes only.
-- Do NOT include newline characters inside JSON strings. Use plain sentences.
+ATS_PACKAGE (source of truth):
+{pkg}
+
+PERSON PROFILE (guidance only — DO NOT quote directly):
+- Writing style: {profile["style"]}
+- Resume positioning: {profile["summary"]}
+- Preferred metric families: {profile["metrics"]}
+
+AVOID_PROFILE (must not match, hard uniqueness constraints):
+{avoid}
+
+SECONDARY TECH (optional, use naturally, do NOT replace core skills):
+{secondary_json}
 
 TASK:
-Generate ONE resume for "{person}".
-Style: {profile["style"]}
+Generate ONE senior-level resume for "{person}" using ATS_PACKAGE.
 
-UNIQUENESS CONSTRAINT:
-Do NOT reuse wording, sentence patterns, or bullet structures from AVOID_TEXT.
-Use different opening verbs, different clause structures, and different metric families.
+HARD RULES:
+- ALL terms in ATS_PACKAGE.core_hard + core_soft + required_phrases MUST appear at least once in THIS resume(critical!).
+- Do not repeat any term more than ATS_PACKAGE.constraints.max_repeat_per_term times.
+- Do NOT start any bullet with any string in AVOID_PROFILE.banned_starts_first5.
+- Avoid reusing verbs in AVOID_PROFILE.verbs_used as much as possible (prefer new verbs).
+- Follow the focus spine in ATS_PACKAGE.lane_spines["{person}"].
+- Follow the PERSON PROFILE to choose focus, verbs, and metrics.
 
-AVOID_TEXT:
-{avoid_text}
-
-SOFT SKILLS (USE VERBATIM WORDING FROM JD):
-{soft_skills_text}
-
-Prefer metrics like: {metric_hint}
-
-HARD SKILLS GUIDANCE:
-- Treat these as hard skills when present in the JD: {extra_hard_json}
-- Optional secondary skills (do NOT invent new tech; pick a few relevant): {default_skills_json}
-
-JSON OUTPUT SCHEMA (MUST MATCH EXACTLY):
+OUTPUT JSON SCHEMA:
 {{
   "{person}": {{
     "summary": "string",
     "skills": {{
-      "Programming Languages": ["string"],
-      "Frameworks & Libraries": ["string"],
-      "Databases": ["string"],
-      "Cloud & DevOps": ["string"],
-      "Testing": ["string"],
-      "Tools": ["string"]
+      "Programming Languages": [],
+      "Frameworks & Libraries": [],
+      "Databases": [],
+      "Cloud & DevOps": [],
+      "Testing": [],
+      "Tools": []
     }},
     "experience": {{
-      "company_1": ["string"],
-      "company_2": ["string"],
-      "company_3": ["string"],
-      "company_4": ["string"]
+      "company_1": [],
+      "company_2": [],
+      "company_3": [],
+      "company_4": []
     }}
   }}
 }}
 
-CONTENT RULES:
-- Summary starts with "Senior Software Engineer" and includes the exact job title phrase from the JD.
-- Each bullet must include:
-  1) one JD hard skill term (verbatim),
-  2) one soft skill phrase (verbatim),
-  3) one metric (%, latency, uptime, users, throughput, cost, MTTR).
-- Ensure sentence structures are meaningfully different from AVOID_TEXT.
-- Use exact JD keywords naturally; avoid stuffing.
-
 EXPERIENCE RULES:
 - company_1 and company_2 → Senior-level responsibilities, 6–8 bullets each
-- company_3 → Mid-level responsibilities, 6 bullets
-- company_4 → Junior-level responsibilities, 4–6 bullets
+- company_3 → Mid-level responsibilities, 5 bullets
+- company_4 → Junior-level responsibilities, 4–5 bullets
 - EACH bullet MUST:
   - Include at least ONE JD hard skill (verbatim)
   - Include at least ONE soft skill (verbatim)
   - Include a measurable metric (%,$,users,latency,scale)
-- Enforce uniqueness across people: different verbs, different metric types, different framing.
+- Enforce uniqueness : different verbs, different metric types, different framing.
 
-JOB DESCRIPTION:
-{jd_text}
+QUALITY:
+- Summary starts with "Senior Software Engineer"
+- Each bullet includes: 1 core_hard term + 1 core_soft phrase + 1 metric
+- Make bullets structurally varied (metric-first, collaboration-first, method-first, outcome-first).
 
-FINAL CHECK BEFORE OUTPUT:
-- Validate the JSON is parseable.
-- If any character would break JSON (like unescaped quotes), rewrite the sentence to avoid it.
-- Output ONLY the JSON object.
+Return JSON only.
 """.strip()
+
+# ================= CHOOSE RANDOM SKILLS ================= #
+
+def _norm(s: str) -> str:
+    return re.sub(r"\s+", " ", s.strip().lower())
+
+def pick_random_secondary_skills(
+    jd_text: str,
+    default_skills: dict,
+    per_category_min: int = 0,
+    per_category_max: int = 2,
+    total_max: int = 8,
+    seed: int | None = None,
+) -> dict:
+    """
+    Randomly pick secondary skills per category, but keep ATS-safe:
+    - Avoid conflicting stacks (e.g., Angular JD => avoid React/Next)
+    - Avoid adding too many irrelevant frameworks/tools
+    """
+    rng = random.Random(seed)
+    jd = _norm(jd_text)
+
+    has_angular = "angular" in jd
+    has_java = "java" in jd
+
+    # Conflicts / avoid list based on JD
+    banned = set()
+    if has_angular:
+        banned.update({_norm("React.js"), _norm("Next.js")})
+    # If JD is strongly Java/Angular enterprise, you may also avoid Laravel/Ruby etc.
+    if has_java:
+        banned.update({_norm("Laravel"), _norm("Ruby")})
+
+    picked = {cat: [] for cat in default_skills.keys()}
+
+    # Random pick by category
+    for cat, items in default_skills.items():
+        pool = [x for x in items if _norm(x) not in banned]
+        if not pool:
+            continue
+
+        k = rng.randint(per_category_min, min(per_category_max, len(pool)))
+        chosen = rng.sample(pool, k) if k > 0 else []
+        picked[cat] = chosen
+
+    # Enforce total_max across categories
+    flat = [(cat, s) for cat, lst in picked.items() for s in lst]
+    rng.shuffle(flat)
+    flat = flat[:total_max]
+
+    trimmed = {cat: [] for cat in default_skills.keys()}
+    for cat, s in flat:
+        trimmed[cat].append(s)
+
+    return trimmed
+
+def build_secondary_by_person(jd_text: str) -> dict:
+    secondary_by_person = {}
+    for person in PERSON_ORDER:
+        # different seed per person for stable randomness
+        seed = abs(hash(person)) % (10**9)
+        secondary_by_person[person] = pick_random_secondary_skills(
+            jd_text=jd_text,
+            default_skills=DEFAULT_SKILLS,
+            per_category_min=0,
+            per_category_max=2,
+            total_max=8,
+            seed=seed,
+        )
+    return secondary_by_person
 
 
 # ================= OPENAI RESPONSE PARSING ================= #
@@ -417,121 +382,6 @@ def extract_text(response) -> str:
             if t:
                 texts.append(t)
     return "\n".join(texts).strip()
-
-
-def safe_parse_json(raw_text: str):
-    if not raw_text:
-        return None
-    raw_text = raw_text.strip()
-    try:
-        return json.loads(raw_text)
-    except Exception:
-        return None
-
-
-def generate_all(jd: str, soft_skills_text: str) -> dict:
-    response = client.responses.create(
-        model=MODEL,
-        input=build_prompt_all(jd, soft_skills_text),
-        temperature=TEMPERATURE_MAIN,
-        timeout=90
-    )
-    text = extract_text(response)
-    data = safe_parse_json(text)
-    if not isinstance(data, dict):
-        raise ValueError("Invalid JSON from model.")
-    return data
-
-
-def regenerate_one(jd: str, soft_skills_text: str, person: str, avoid_text: str) -> dict:
-    response = client.responses.create(
-        model=MODEL,
-        input=build_prompt_one_person(jd, soft_skills_text, person, avoid_text),
-        temperature=TEMPERATURE_REGEN,
-        timeout=90
-    )
-    text = extract_text(response)
-    print(text)
-    data = safe_parse_json(text)
-    if not isinstance(data, dict) or person not in data:
-        raise ValueError(f"Invalid regen JSON for {person}.")
-    return data[person]
-
-
-# ================= UNIQUENESS CHECKING ================= #
-
-def _collect_all_bullets(all_data: dict) -> tuple[list[str], list[str]]:
-    bullets = []
-    owners = []
-    for person in PERSON_ORDER:
-        pdata = all_data.get(person, {})
-        exp = pdata.get("experience", {})
-        for i in range(1, COMPANY_COUNT + 1):
-            for b in exp.get(f"company_{i}", []) or []:
-                if isinstance(b, str) and b.strip():
-                    bullets.append(b.strip())
-                    owners.append(person)
-    return bullets, owners
-
-
-def find_flagged_people(all_data: dict, threshold: float) -> list[str]:
-    bullets, owners = _collect_all_bullets(all_data)
-    if len(bullets) < 2:
-        return []
-
-    vec = TfidfVectorizer(ngram_range=(1, 2), stop_words="english")
-    X = vec.fit_transform(bullets)
-    sim = cosine_similarity(X)
-
-    flagged = set()
-    n = len(bullets)
-    for i in range(n):
-        for j in range(i + 1, n):
-            if owners[i] != owners[j] and sim[i, j] >= threshold:
-                flagged.add(owners[i])
-                flagged.add(owners[j])
-
-    return sorted(flagged)
-
-
-def build_avoid_text(all_data: dict, exclude_person: str, max_chars: int) -> str:
-    chunks = []
-    for person in PERSON_ORDER:
-        if person == exclude_person:
-            continue
-        pdata = all_data.get(person, {})
-        if pdata.get("summary"):
-            chunks.append(pdata["summary"])
-        exp = pdata.get("experience", {})
-        for i in range(1, COMPANY_COUNT + 1):
-            chunks.extend(exp.get(f"company_{i}", []) or [])
-
-    joined = "\n".join([c for c in chunks if isinstance(c, str)])
-    return joined[:max_chars]
-
-
-def enforce_uniqueness(jd: str, soft_skills_text: str, all_data: dict,
-                       threshold: float = SIMILARITY_THRESHOLD,
-                       max_rounds: int = MAX_REGEN_ROUNDS) -> dict:
-    for round_idx in range(1, max_rounds + 1):
-        flagged = find_flagged_people(all_data, threshold)
-        print(f"[ROUND {round_idx}/{max_rounds}] Flagged: {', '.join(flagged)}")
-        if not flagged:
-            return all_data
-
-        # Regenerate only the people contributing to overlap
-        for person in flagged:
-            avoid_text = build_avoid_text(all_data, person, AVOID_TEXT_MAX_CHARS)
-            try:
-                all_data[person] = regenerate_one(jd, soft_skills_text, person, avoid_text)
-            except Exception as e:
-                # If regen fails, keep existing and continue
-                print(f"[WARN] Regen failed for {person}: {e}")
-
-        # small pause to avoid rapid retry bursts
-        time.sleep(0.2)
-
-    return all_data
 
 
 # ================= SKILLS MERGE ================= #
@@ -635,8 +485,14 @@ def batch_convert_to_pdf(folder: str):
 
 
 # ================= MAIN ================= #
-
 def on_hotkey_generate():
+    """
+    New pipeline:
+    1) Compress JD once -> ATS_PACKAGE (JSON)
+    2) Generate 5 resumes sequentially (one person at a time)
+       using ATS_PACKAGE + growing AVOID_PROFILE (no repeats)
+    3) Write DOCX + convert to PDF
+    """
     global output_base_dir, folder_opened, is_running
 
     if is_running:
@@ -653,26 +509,58 @@ def on_hotkey_generate():
             output_base_dir = os.path.join(OUTPUT_DIR, "JD_resumes")
             os.makedirs(output_base_dir, exist_ok=True)
 
-        soft_skills = extract_soft_skills(jd)
-        soft_skills_text = ", ".join(soft_skills) if soft_skills else "None"
+        # ---------- 1) Compress JD once ----------
+        notify("Compressing JD (ATS package)...")
+        compress_prompt = build_prompt_compress_jd(jd)
+        
+        ats_package = call_openai_json(compress_prompt)  # must return dict
+        print(ats_package)
+        # ---------- 2) Generate resumes sequentially ----------
+        notify("Generating 4 resumes (sequential, low tokens)...")
 
-        notify("Generating resumes...")
-        all_data = generate_all(jd, soft_skills_text)
-            
-        # Enforce uniqueness across people
-        notify("Improving uniqueness...")
-        all_data = enforce_uniqueness(jd, soft_skills_text, all_data)
+        all_data = {}
+        avoid_profile = {
+            "banned_starts_first5": [],
+            "verbs_used": [],
+        }
+        secondary_by_person = build_secondary_by_person(jd)
+        
 
-        # Write DOCX
         for person in PERSON_ORDER:
-            pdata = all_data.get(person)
-            if not pdata:
-                notify(f"{person} missing from model output")
-                continue
+            secondary_for_person = secondary_by_person[person]
+            secondary_json = json.dumps(secondary_for_person, ensure_ascii=False)
 
+            notify(f"Generating {person} resume...")
+
+            person_prompt = build_prompt_one_person_from_pkg(
+                ats_package=ats_package,
+                person=person,
+                avoid_profile=avoid_profile,
+                secondary_json=secondary_json,
+            )
+
+            one_json = call_openai_json(person_prompt)  # returns {"Timothy": {...}}
+            if person not in one_json:
+                raise ValueError(f"Missing '{person}' key in model output")
+
+            pdata = one_json[person]
+            all_data[person] = pdata
+
+            # Update avoid profile to reduce similarity for next resumes
+            ap = build_avoid_profile(pdata)
+            avoid_profile["banned_starts_first5"] = sorted(
+                set(avoid_profile["banned_starts_first5"] + ap.get("banned_starts_first5", []))
+            )[:250]
+            avoid_profile["verbs_used"] = sorted(
+                set(avoid_profile["verbs_used"] + ap.get("verbs_used", []))
+            )[:150]
+
+            if not pdata:
+                notify(f"{person} missing from generated data")
+                continue
+            
             template = TEMPLATES[person]
             output_docx = os.path.join(output_base_dir, f"{person}_resume.docx")
-
             fill_template(template, pdata, output_docx)
             notify(f"{person} DOCX generated")
 
@@ -683,16 +571,16 @@ def on_hotkey_generate():
                     pass
                 folder_opened = True
 
+        # ---------- 4) Convert to PDF ----------
         notify("DOCX generation done. Converting to PDF...")
         batch_convert_to_pdf(output_base_dir)
         notify("All PDFs generated")
 
     except Exception as e:
         print("Error:", e)
-        notify("Error generating resumes")
+        notify(f"Error generating resumes: {e}")
     finally:
         is_running = False
-
 
 def on_hotkey_pdf_only():
     global output_base_dir, is_running
