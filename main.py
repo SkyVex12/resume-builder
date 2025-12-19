@@ -28,15 +28,14 @@ TEMPERATURE_REGEN = 0.70
 
 COMPANY_COUNT = 4
 
-# IMPORTANT: You generate 5 people, so reflect that everywhere
-PERSON_ORDER = ["Timothy", "Wilfredo", "Lou", "Ryan", "James"]
+# IMPORTANT: You generate 4 people, so reflect that everywhere
+PERSON_ORDER = ["Timothy", "Wilfredo", "Lou", "Ryan"]
 
 TEMPLATES = {
     "Timothy": "templates/Timothy.docx",
     "Wilfredo": "templates/Wilfredo.docx",
     "Lou": "templates/Lou.docx",
     "Ryan": "templates/Ryan.docx",
-    "James": "templates/James.docx"
 }
 
 SKILL_CATEGORY_ORDER = [
@@ -45,7 +44,7 @@ SKILL_CATEGORY_ORDER = [
     "Databases",
     "Cloud & DevOps",
     "Testing",
-    "Tools & Practices",
+    "Tools",
 ]
 
 SOFT_SKILL_SIGNAL_WORDS = {
@@ -66,7 +65,8 @@ SOFT_SKILL_SIGNAL_WORDS = {
     "attention to detail",
     "independently", "collaborate", "pressure", "creative", "organized", "consistent",
     "detail-oriented", "interpersonal", "multitasking", "proactive", "self-motivated", "strategic",
-    "perfectionist", "diligent", "dependable", "dedicated", "innovative"
+    "perfectionist", "diligent", "dependable", "dedicated", "innovative", "detail-oriented","satisfaction",
+    "communicate", "teamwork", 
 }
 
 HARD_SKILL_KEYWORDS = {
@@ -77,6 +77,13 @@ HARD_SKILL_KEYWORDS = {
     "jest", "cypress", "mocha",
     "jira", "git", "rest", "api", "microservices", "security", "ai"  # ensure lowercase
 }
+
+EXTRA_HARD_SKILLS = [
+    "Cloud Infrastructure", "Information Systems", "Web Services",
+    "object-oriented programming languages", "software development life cycle", 
+    "front-end development", "back-end development", "full stack development", 
+    "full-stack development", "project documentation",
+]
 
 OUTPUT_DIR = "output"
 BULLET = "  \u2022    "  # bullet point
@@ -111,11 +118,6 @@ PERSON_PROFILES = {
         "summary": "senior software engineer with solid fundamentals and growth mindset",
         "metrics": "feature adoption, support tickets, time-to-ship, performance, usage"
     },
-    "James": {
-        "style": "results-driven, execution-focused, performance optimization oriented",
-        "summary": "senior full-stack engineer with a strong track record of delivering high-impact features",
-        "metrics": "conversion, revenue, latency, cost, retention"
-    }
 }
 
 
@@ -127,7 +129,7 @@ DEFAULT_SKILLS = {
     "Databases": ["MySQL", "PostgreSQL", "MongoDB", "Firebase", "Redis"],
     "Testing": ["Jest", "React Testing Library", "Cypress", "Mocha", "Go-Testify"],
     "Cloud & DevOps": ["AWS", "Azure", "Docker", "Jenkins"],
-    "Tools & Practices": ["Git", "Jira", "CI/CD", "Agile", "Scrum"]
+    "Tools": ["Git", "Jira", "CI/CD"]
 }
 
 MAX_SKILLS_PER_CATEGORY = 8
@@ -173,7 +175,7 @@ def extract_soft_skills(jd_text: str) -> list[str]:
         if any(h in phrase for h in HARD_SKILL_KEYWORDS):
             continue
         soft.add(phrase)
-
+    print(soft)
     return sorted(soft)
 
 
@@ -189,7 +191,7 @@ You are an ATS optimization engine.
 Output valid JSON only.
 
 GOAL:
-Generate FIVE DISTINCT senior-level resumes for the SAME Job Description.
+Generate FOUR DISTINCT senior-level resumes for the SAME Job Description.
 Target ATS score: 90–95%+.
 
 ABSOLUTE RULES:
@@ -199,7 +201,8 @@ ABSOLUTE RULES:
 - Do NOT reuse bullets across people.
 - Output JSON ONLY. No markdown. No explanations.
 - All soft skills and hard skills mentioned in the JD MUST appear across ALL resumes.
-- Treat items like 'front-end development', 'cloud infrastructure', 'Information Systems', 'web services', 'Software Development Lifecycle' as hard skills too when present.
+- Treat items like {EXTRA_HARD_SKILLS} as hard skills too when present.
+- Use these hard skills as optional (more than 3 but don't use same skills across people): {DEFAULT_SKILLS}
 
 PEOPLE & STYLE DIFFERENTIATION:
 {people_block()}
@@ -217,7 +220,7 @@ OUTPUT FORMAT (STRICT JSON — NO TRAILING COMMAS):
       "Databases": [],
       "Cloud & DevOps": [],
       "Testing": [],
-      "Tools & Practices": []
+      "Tools": []
     }},
     "experience": {{
       "company_1": [],
@@ -234,7 +237,7 @@ OUTPUT FORMAT (STRICT JSON — NO TRAILING COMMAS):
       "Databases": [],
       "Cloud & DevOps": [],
       "Testing": [],
-      "Tools & Practices": []
+      "Tools": []
     }},
     "experience": {{
       "company_1": [],
@@ -251,7 +254,7 @@ OUTPUT FORMAT (STRICT JSON — NO TRAILING COMMAS):
       "Databases": [],
       "Cloud & DevOps": [],
       "Testing": [],
-      "Tools & Practices": []
+      "Tools": []
     }},
     "experience": {{
       "company_1": [],
@@ -268,7 +271,7 @@ OUTPUT FORMAT (STRICT JSON — NO TRAILING COMMAS):
       "Databases": [],
       "Cloud & DevOps": [],
       "Testing": [],
-      "Tools & Practices": []
+      "Tools": []
     }},
     "experience": {{
       "company_1": [],
@@ -277,23 +280,6 @@ OUTPUT FORMAT (STRICT JSON — NO TRAILING COMMAS):
       "company_4": []
     }}
   }},
-  "James": {{
-    "summary": "string",
-    "skills": {{
-      "Programming Languages": [],
-      "Frameworks & Libraries": [],
-      "Databases": [],
-      "Cloud & DevOps": [],
-      "Testing": [],
-      "Tools & Practices": []
-    }},
-    "experience": {{
-      "company_1": [],
-      "company_2": [],
-      "company_3": [],
-      "company_4": []
-    }}
-  }}
 }}
 
 SUMMARY RULES:
@@ -307,7 +293,7 @@ SKILLS RULES:
 - Use JD keywords verbatim where possible.
 - Include 6–10 skills per category.
 - Prioritize skills mentioned multiple times in the JD.
-- 'Tools & Practices' must only include tools and practices in the JD.
+- 'Tools' must only include tools in the JD.
 
 EXPERIENCE RULES:
 - company_1 and company_2 → Senior-level responsibilities, 6–8 bullets each
@@ -326,23 +312,37 @@ JOB DESCRIPTION:
 Return ONLY valid JSON.
 """.strip()
 
+import json
 
 def build_prompt_one_person(jd_text: str, soft_skills_text: str, person: str, avoid_text: str) -> str:
     profile = PERSON_PROFILES[person]
     metric_hint = profile.get("metrics", "")
 
+    # Serialize injected objects so the model sees valid JSON literals
+    extra_hard_json = json.dumps(EXTRA_HARD_SKILLS, ensure_ascii=False)
+    default_skills_json = json.dumps(DEFAULT_SKILLS, ensure_ascii=False)
+
+    # Keep avoid_text short to reduce chaos (huge blocks increase formatting errors)
+    avoid_text = avoid_text[:2500]
+
     return f"""
 You are an ATS optimization engine.
-Output valid JSON only.
 
-Generate ONE resume for: {person}
+OUTPUT CONTRACT (CRITICAL):
+- Output MUST be a single valid JSON object and NOTHING else.
+- No markdown. No comments. No extra keys. No trailing commas.
+- All strings must use double quotes only.
+- Do NOT include newline characters inside JSON strings. Use plain sentences.
+
+TASK:
+Generate ONE resume for "{person}".
 Style: {profile["style"]}
 
-HARD CONSTRAINT:
-Do NOT reuse wording, sentence patterns, or bullet structures from the AVOID TEXT below.
+UNIQUENESS CONSTRAINT:
+Do NOT reuse wording, sentence patterns, or bullet structures from AVOID_TEXT.
 Use different opening verbs, different clause structures, and different metric families.
 
-AVOID TEXT:
+AVOID_TEXT:
 {avoid_text}
 
 SOFT SKILLS (USE VERBATIM WORDING FROM JD):
@@ -350,36 +350,57 @@ SOFT SKILLS (USE VERBATIM WORDING FROM JD):
 
 Prefer metrics like: {metric_hint}
 
-OUTPUT JSON (NO TRAILING COMMAS):
+HARD SKILLS GUIDANCE:
+- Treat these as hard skills when present in the JD: {extra_hard_json}
+- Optional secondary skills (do NOT invent new tech; pick a few relevant): {default_skills_json}
+
+JSON OUTPUT SCHEMA (MUST MATCH EXACTLY):
 {{
   "{person}": {{
     "summary": "string",
     "skills": {{
-      "Programming Languages": [],
-      "Frameworks & Libraries": [],
-      "Databases": [],
-      "Cloud & DevOps": [],
-      "Testing": [],
-      "Tools & Practices": []
+      "Programming Languages": ["string"],
+      "Frameworks & Libraries": ["string"],
+      "Databases": ["string"],
+      "Cloud & DevOps": ["string"],
+      "Testing": ["string"],
+      "Tools": ["string"]
     }},
     "experience": {{
-      "company_1": [],
-      "company_2": [],
-      "company_3": [],
-      "company_4": []
+      "company_1": ["string"],
+      "company_2": ["string"],
+      "company_3": ["string"],
+      "company_4": ["string"]
     }}
   }}
 }}
 
-RULES:
-- Summary starts with "Senior Software Engineer" and includes the EXACT job title from the JD.
-- Bullets must include: (1) one JD hard skill verbatim, (2) one soft skill verbatim, (3) one metric.
-- Make all sentences structurally distinct from AVOID TEXT.
+CONTENT RULES:
+- Summary starts with "Senior Software Engineer" and includes the exact job title phrase from the JD.
+- Each bullet must include:
+  1) one JD hard skill term (verbatim),
+  2) one soft skill phrase (verbatim),
+  3) one metric (%, latency, uptime, users, throughput, cost, MTTR).
+- Ensure sentence structures are meaningfully different from AVOID_TEXT.
+- Use exact JD keywords naturally; avoid stuffing.
+
+EXPERIENCE RULES:
+- company_1 and company_2 → Senior-level responsibilities, 6–8 bullets each
+- company_3 → Mid-level responsibilities, 6 bullets
+- company_4 → Junior-level responsibilities, 4–6 bullets
+- EACH bullet MUST:
+  - Include at least ONE JD hard skill (verbatim)
+  - Include at least ONE soft skill (verbatim)
+  - Include a measurable metric (%,$,users,latency,scale)
+- Enforce uniqueness across people: different verbs, different metric types, different framing.
 
 JOB DESCRIPTION:
 {jd_text}
 
-Return ONLY valid JSON.
+FINAL CHECK BEFORE OUTPUT:
+- Validate the JSON is parseable.
+- If any character would break JSON (like unescaped quotes), rewrite the sentence to avoid it.
+- Output ONLY the JSON object.
 """.strip()
 
 
@@ -430,6 +451,7 @@ def regenerate_one(jd: str, soft_skills_text: str, person: str, avoid_text: str)
         timeout=90
     )
     text = extract_text(response)
+    print(text)
     data = safe_parse_json(text)
     if not isinstance(data, dict) or person not in data:
         raise ValueError(f"Invalid regen JSON for {person}.")
@@ -493,6 +515,7 @@ def enforce_uniqueness(jd: str, soft_skills_text: str, all_data: dict,
                        max_rounds: int = MAX_REGEN_ROUNDS) -> dict:
     for round_idx in range(1, max_rounds + 1):
         flagged = find_flagged_people(all_data, threshold)
+        print(f"[ROUND {round_idx}/{max_rounds}] Flagged: {', '.join(flagged)}")
         if not flagged:
             return all_data
 
@@ -530,6 +553,44 @@ def replace_placeholder_plain(doc: Document, placeholder: str, value: str):
         if placeholder in p.text:
             p.text = p.text.replace(placeholder, value)
 
+import random
+from typing import List, Any
+
+def shuffle_and_drop(items: List[Any], max_drop: int = 2) -> List[Any]:
+    """
+    Shuffles the list and removes 0–2 elements.
+    When list length < 4, removal is biased toward 0 or 1.
+    """
+    if not items:
+        return []
+
+    result = items.copy()
+    random.shuffle(result)
+    n = len(result)
+
+    # Drop logic with intelligent bias
+    if n < 2:
+        drop_count = 0
+    elif n < 4:
+        # Strong bias toward 0 or 1
+        drop_count = random.choices(
+            population=[0, 1, 2],
+            weights=[0.6, 0.35, 0.05],
+            k=1
+        )[0]
+    else:
+        # Normal behavior for larger lists
+        drop_count = random.randint(0, 2)
+
+    # Safety clamp
+    drop_count = min(drop_count, n)
+
+    # Remove random elements
+    for _ in range(drop_count):
+        result.pop(random.randrange(len(result)))
+
+    return result
+
 
 def replace_skills_placeholder(doc: Document, placeholder: str, skills: dict):
     # Bold only categories using runs
@@ -542,7 +603,8 @@ def replace_skills_placeholder(doc: Document, placeholder: str, skills: dict):
                     continue
                 run_cat = p.add_run(f"{category}: ")
                 run_cat.bold = True
-                p.add_run(", ".join(items))
+                reorderd_items = shuffle_and_drop(items)
+                p.add_run(", ".join(reorderd_items))
                 p.add_run("\n")
 
 
@@ -596,7 +658,7 @@ def on_hotkey_generate():
 
         notify("Generating resumes...")
         all_data = generate_all(jd, soft_skills_text)
-
+            
         # Enforce uniqueness across people
         notify("Improving uniqueness...")
         all_data = enforce_uniqueness(jd, soft_skills_text, all_data)
