@@ -252,12 +252,15 @@ TASK:
 Generate ONE senior-level resume for "{person}" using ATS_PACKAGE.
 
 HARD RULES:
+- DO NOT repeat core_soft terms more than 3 times (critical!).
 - ALL terms in ATS_PACKAGE.core_hard + core_soft + required_phrases MUST appear at least once in THIS resume(critical!).
 - Do not repeat any term more than ATS_PACKAGE.constraints.max_repeat_per_term times.
 - Do NOT start any bullet with any string in AVOID_PROFILE.banned_starts_first5.
 - Avoid reusing verbs in AVOID_PROFILE.verbs_used as much as possible (prefer new verbs).
 - Follow the focus spine in ATS_PACKAGE.lane_spines["{person}"].
 - Follow the PERSON PROFILE to choose focus, verbs, and metrics.
+- if core_soft is less than 5, add some soft skills.
+- If core_hard is less than 5, add some hard skills.
 
 OUTPUT JSON SCHEMA:
 {{
@@ -284,15 +287,17 @@ EXPERIENCE RULES:
 - company_1 and company_2 → Senior-level responsibilities, 6–8 bullets each
 - company_3 → Mid-level responsibilities, 5 bullets
 - company_4 → Junior-level responsibilities, 4–5 bullets
+- Sometimes include core_soft skill (verbatim)
+- EACH company section MUST:
+    - Include at least TWO core_soft skill BUT don't repeat any (verbatim)
 - EACH bullet MUST:
   - Include at least ONE JD hard skill (verbatim)
-  - Include at least ONE soft skill (verbatim)
   - Include a measurable metric (%,$,users,latency,scale)
 - Enforce uniqueness : different verbs, different metric types, different framing.
 
 QUALITY:
 - Summary starts with "Senior Software Engineer"
-- Each bullet includes: 1 core_hard term + 1 core_soft phrase + 1 metric
+- Each bullet includes: 1 core_hard term + (more than 0.2 core_soft phrase) + 1 metric
 - Make bullets structurally varied (metric-first, collaboration-first, method-first, outcome-first).
 
 Return JSON only.
